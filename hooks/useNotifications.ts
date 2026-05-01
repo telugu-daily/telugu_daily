@@ -8,14 +8,18 @@ const NOTIF_HOUR = 7;   // 7 AM
 const NOTIF_MINUTE = 0;
 
 // How the notification appears when the app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (e) {
+  console.log('[notifications] setNotificationHandler failed:', e);
+}
 
 const STREAK_MESSAGES = [
   { title: (name: string) => `Hey ${name} 🔥 Your streak is on the line!`, body: 'Just 5 minutes of Telugu today keeps it alive.' },

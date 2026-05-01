@@ -184,6 +184,8 @@ function InitialLayout() {
       {/* App content renders underneath - loads while splash is on top */}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style={showSplash ? 'light' : 'auto'} />
 
