@@ -19,9 +19,11 @@ import {
   User
 } from 'lucide-react-native';
 import * as Speech from 'expo-speech';
-import { fetchSentencesByDay, Sentence } from '@/utils/api';
+import { fetchSentencesByDay, getCachedSentences, Sentence } from '@/utils/api';
 import BannerAdComponent from '@/components/BannerAd';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/hooks/useAuth';
+import { rescheduleAfterCompletion } from '@/hooks/useNotifications';
 
 // Get screen dimensions
 const { height: screenHeight } = Dimensions.get('window');
@@ -118,6 +120,8 @@ const AdCard = React.memo<{ position: number }>(({ position }) => (
 ));
 
 export default function HomeScreen() {
+  const { user } = useAuth();
+  
   // State management
   const [currentDay, setCurrentDay] = useState(1);
   const [completedSentences, setCompletedSentences] = useState<{ [key: number]: boolean }>({});
@@ -170,10 +174,30 @@ export default function HomeScreen() {
     initializeUserJourney();
   }, []);
 
-  // Load sentences from backend API
+  // Load sentences: cache-first, then refresh from API in background
   const loadSentencesForDay = async (day: number) => {
     setFetchError(null);
     try {
+      // 1) Try loading from local cache first (instant)
+      const cached = await getCachedSentences(day);
+      if (cached && cached.length > 0) {
+        setTodaysSentences(cached);
+        setIsLoading(false);
+        console.log(`Loaded ${cached.length} cached sentences for day ${day}`);
+
+        // 2) Refresh from API in background (silent update)
+        fetchSentencesByDay(day)
+          .then((data) => {
+            if (data && data.length > 0) {
+              setTodaysSentences(data);
+              console.log(`Refreshed ${data.length} sentences from API for day ${day}`);
+            }
+          })
+          .catch((err) => console.log('Background refresh failed (using cache):', err?.message));
+        return;
+      }
+
+      // 3) No cache — fetch from API (first-time load)
       console.log(`Fetching sentences for day ${day} from API...`);
       console.log(`API URL: ${process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3000/api'}`);
       const data = await fetchSentencesByDay(day);
@@ -186,7 +210,7 @@ export default function HomeScreen() {
     } catch (error: any) {
       const msg = error?.message || 'Unknown error';
       console.log('API fetch failed:', msg);
-      setFetchError(`Failed to load sentences: ${msg}\n\nCheck that the backend server is running and EXPO_PUBLIC_API_URL is set correctly.`);
+      setFetchError(`Unable to load today's sentences. Please check your internet connection and try again.`);
     }
   };
 
@@ -215,8 +239,11 @@ export default function HomeScreen() {
         setCurrentDay(userCurrentDay);
         setDaysInJourney(totalDaysInJourney);
 
-        await loadSentencesForDay(userCurrentDay);
-        await loadDaySpecificData(userCurrentDay);
+        // Load sentences and day data in parallel
+        await Promise.all([
+          loadSentencesForDay(userCurrentDay),
+          loadDaySpecificData(userCurrentDay)
+        ]);
 
       } else {
         // New user - this shouldn't happen since you're already existing user
@@ -317,15 +344,15 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // DUAL SAVE - Save to both old format AND new format for compatibility
+  // DUAL SAVE - Save to AsyncStorage only (cloud sync happens on app background via backupToCloud)
   const saveToStorage = async (key: string, data: any) => {
     try {
       // Save in old format (for compatibility with other screens)
       await AsyncStorage.setItem(key, JSON.stringify(data));
-
-      // Also save in new day-specific format
+      // Save in new day-specific format
       await AsyncStorage.setItem(`${key}_day_${currentDay}`, JSON.stringify(data));
-
+      // Mark data as dirty so backupToCloud knows something changed
+      await AsyncStorage.setItem('progressDirty', 'true');
     } catch (error) {
       console.log(`Error saving ${key}:`, error);
     }
@@ -348,10 +375,14 @@ export default function HomeScreen() {
   const handleTextToSpeech = useCallback(async (text: string, isEnglish: boolean = true) => {
     try {
       const language = isEnglish ? 'en-US' : 'te-IN';
+      
+      // English plays very slow (0.5) for learning, Telugu plays at normal speed (1.0)
+      const speedRate = isEnglish ? 0.5 : 1.0; 
+      
       await Speech.speak(text, {
         language,
         pitch: 1.0,
-        rate: 0.8,
+        rate: speedRate,
       });
     } catch (error) {
       console.log('TTS Error:', error);
@@ -398,6 +429,8 @@ export default function HomeScreen() {
 
         const sentenceRange = getSentenceRange(currentDay);
         const isLastDay = currentDay >= 300;
+
+        rescheduleAfterCompletion();
 
         Alert.alert(
           '🎉 Day Completed!',
@@ -510,11 +543,11 @@ export default function HomeScreen() {
   // ✅ PERFORMANCE OPTIMIZATION 7: ItemSeparatorComponent
   const ItemSeparator = useCallback(() => <View style={styles.itemSeparator} />, []);
 
-  // Show loading screen
+  // Show loading screen — matches splash screen colors for seamless transition
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={'#4ECDC4'} />
+        <ActivityIndicator size="large" color={'#FFFFFF'} />
         <Text style={styles.loadingText}>Loading your journey...</Text>
       </View>
     );
@@ -624,13 +657,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#4ECDC4',
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     fontFamily: 'Poppins-Regular',
-    color: '#4ECDC4',
+    color: '#FFFFFF',
   },
   errorEmoji: {
     fontSize: 48,

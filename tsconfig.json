@@ -14,5 +14,8 @@
     "expo-env.d.ts",
     "nativewind-env.d.ts",
     "utils/adInitializer.js"
+  ],
+  "exclude": [
+    "node_modules"
   ]
 }

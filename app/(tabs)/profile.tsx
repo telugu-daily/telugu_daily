@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Trophy } from 'lucide-react-native';
+import { User, Trophy, MessageSquare } from 'lucide-react-native';
 import {
   getUserJoinDate,
   getUserCurrentDay,
@@ -14,9 +14,11 @@ import {
   calculateLongestStreak as calculateLongestStreakUtil
 } from '@/utils/userJourney';
 import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '@/hooks/useAuth';
 
 
 export default function ProfileScreen() {
+  const { user, signOut } = useAuth();
   // State for dynamic user data
   const [userJoinDate, setUserJoinDate] = useState<Date | null>(null);
   const [actualDaysLearned, setActualDaysLearned] = useState(0);
@@ -96,7 +98,7 @@ export default function ProfileScreen() {
 
 
   const userStats = {
-    name: 'Telugu Learner',
+    name: user?.email ? user.email.split('@')[0] : 'Telugu Learner',
     joinDate: memberSinceText || 'Loading...',
     currentStreak: currentStreak,
     longestStreak: longestStreak,
@@ -289,7 +291,20 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <View style={styles.appInfo}>
+         <View style={styles.appInfo}>
+           <TouchableOpacity
+             style={styles.reportButton}
+             onPress={() => Linking.openURL('https://docs.google.com/forms/d/e/1FAIpQLScJ0qNcFdzrdGi0pJNp5PSW112FkNjC89eK9NDjPBP4YD2brg/viewform')}
+           >
+             <MessageSquare size={18} color="#FFFFFF" />
+             <Text style={styles.reportButtonText}>Report a Sentence</Text>
+           </TouchableOpacity>
+           <TouchableOpacity
+             style={[styles.reportButton, { backgroundColor: '#E74C3C', marginTop: -8 }]}
+             onPress={signOut}
+           >
+             <Text style={styles.reportButtonText}>Sign Out</Text>
+           </TouchableOpacity>
            <Text style={styles.appInfoText}>Telugu Daily v1.0.0</Text>
            <Text style={styles.appInfoText}>Made with ❤️ for Telugu learners</Text>
          </View>
@@ -483,6 +498,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 20,
     marginBottom: 40,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4ECDC4',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  reportButtonText: {
+    fontSize: 14,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#FFFFFF',
   },
   appInfoText: {
     fontSize: 12,
