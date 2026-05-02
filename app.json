@@ -1,4 +1,7 @@
 {
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-2909263012824712~7821976854"
+  },
   "expo": {
     "name": "Telugu Daily",
     "slug": "telugu-daily",
