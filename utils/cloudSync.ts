@@ -146,35 +146,44 @@ export const migrateLocalToCloud = async (userId: string, email?: string) => {
 
     if (profileError) console.error('Error migrating user profile:', profileError);
 
-    // 2. Migrate day-specific progress
-    // We'll iterate up to 300 days to find any stored data
+    // 2. Migrate day-specific progress — batch all AsyncStorage reads in one call
+    const allKeys: string[] = [];
     for (let day = 1; day <= 300; day++) {
-      const [completed, mastered, viewed] = await Promise.all([
-        AsyncStorage.getItem(`completedSentences_day_${day}`),
-        AsyncStorage.getItem(`masteredSentences_day_${day}`),
-        AsyncStorage.getItem(`viewedCount_day_${day}`)
-      ]);
+      allKeys.push(
+        `completedSentences_day_${day}`,
+        `masteredSentences_day_${day}`,
+        `viewedCount_day_${day}`
+      );
+    }
+    const stored = await AsyncStorage.multiGet(allKeys);
+    const map = new Map(stored);
 
-      if (completed || mastered || viewed) {
-        const updatePayload: any = {
-          user_id: userId,
-          day_number: day,
-          updated_at: new Date().toISOString()
-        };
+    const rows: any[] = [];
+    const nowIso = new Date().toISOString();
+    for (let day = 1; day <= 300; day++) {
+      const completed = map.get(`completedSentences_day_${day}`);
+      const mastered = map.get(`masteredSentences_day_${day}`);
+      const viewed = map.get(`viewedCount_day_${day}`);
+      if (!completed && !mastered && !viewed) continue;
+      const row: any = { user_id: userId, day_number: day, updated_at: nowIso };
+      try {
+        if (completed) row.completed_sentences = JSON.parse(completed);
+        if (mastered) row.mastered_sentences = JSON.parse(mastered);
+        if (viewed) row.viewed_count = JSON.parse(viewed);
+        rows.push(row);
+      } catch (e) {
+        console.log(`Skipping day ${day} during migration (parse error):`, e);
+      }
+    }
 
-        if (completed) updatePayload.completed_sentences = JSON.parse(completed);
-        if (mastered) updatePayload.mastered_sentences = JSON.parse(mastered);
-        if (viewed) updatePayload.viewed_count = JSON.parse(viewed);
-
-        const { error: upsertError } = await supabase
-          .from('user_day_progress')
-          .upsert(updatePayload, { onConflict: 'user_id,day_number' });
-
-        if (upsertError) {
-          console.error(`Error migrating day ${day}:`, upsertError);
-        } else {
-          console.log(`Migrated day ${day} successfully`);
-        }
+    if (rows.length > 0) {
+      const { error: upsertError } = await supabase
+        .from('user_day_progress')
+        .upsert(rows, { onConflict: 'user_id,day_number' });
+      if (upsertError) {
+        console.error('Error migrating day progress:', upsertError);
+      } else {
+        console.log(`Migrated ${rows.length} days successfully`);
       }
     }
 

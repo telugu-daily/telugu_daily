@@ -638,11 +638,7 @@ export default function HomeScreen() {
         windowSize={10}
         updateCellsBatchingPeriod={50}
         disableVirtualization={false}
-        getItemLayout={(data, index) => ({
-          length: 220, // Approximate item height
-          offset: 228 * index, // 220 + 8 separator
-          index,
-        })}
+        // NOTE: getItemLayout removed — list contains mixed-height items (sentences + ads)
       />
     </View>
   );
