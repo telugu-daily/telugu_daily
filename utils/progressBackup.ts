@@ -4,13 +4,9 @@ import { supabase } from '@/utils/supabase';
 /**
  * Centralized AsyncStorage progress backup.
  *
- * Local storage is the source of truth during a session. When the app goes to
- * the background, we read every relevant key and POST a single payload to the
- * backend, which upserts day rows + updates `last_active` on the user profile.
+ * Writes directly to Supabase using the user's auth session (no backend needed).
+ * Called when the app goes to background via AppState listener in useAuth.
  */
-
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'https://api.vidhyaly.com/api';
 
 export interface DayProgress {
   day_number: number;
@@ -45,7 +41,6 @@ export async function collectAllProgress(): Promise<ProgressBackupPayload> {
     }
   }
 
-  // Build all day-specific keys in one shot for efficiency
   const dayKeys: string[] = [];
   for (let day = 1; day <= MAX_DAYS; day++) {
     dayKeys.push(
@@ -79,22 +74,14 @@ export async function collectAllProgress(): Promise<ProgressBackupPayload> {
   return { user_join_date: userJoinDate, learned_days, days };
 }
 
-/**
- * Send a full progress backup to the backend. Silent on failure (best-effort).
- * Throttled to once per 30 seconds per session to avoid hammering the server
- * if the app rapidly toggles foreground/background.
- */
 let lastBackupAt = 0;
 const BACKUP_MIN_INTERVAL_MS = 30 * 1000;
 
 export async function backupToCloud(force = false): Promise<boolean> {
   try {
     const now = Date.now();
-    if (!force && now - lastBackupAt < BACKUP_MIN_INTERVAL_MS) {
-      return false;
-    }
+    if (!force && now - lastBackupAt < BACKUP_MIN_INTERVAL_MS) return false;
 
-    // Skip if nothing changed since last backup (dirty flag not set)
     if (!force) {
       const dirty = await AsyncStorage.getItem('progressDirty');
       if (dirty !== 'true') {
@@ -109,29 +96,49 @@ export async function backupToCloud(force = false): Promise<boolean> {
       return false;
     }
 
+    const userId = session.user.id;
     const payload = await collectAllProgress();
-    if (payload.days.length === 0 && !payload.user_join_date && !payload.learned_days) {
-      // Nothing to back up
+    if (payload.days.length === 0 && !payload.user_join_date && !payload.learned_days) return false;
+
+    const nowIso = new Date().toISOString();
+
+    // Upsert user profile (last_active + join_date + learned_days)
+    const profilePayload: any = { id: userId, last_active: nowIso, updated_at: nowIso };
+    if (payload.user_join_date) profilePayload.join_date = payload.user_join_date;
+    if (payload.learned_days) profilePayload.learned_days = payload.learned_days;
+
+    const { error: profileErr } = await supabase
+      .from('user_profiles')
+      .upsert(profilePayload, { onConflict: 'id' });
+
+    if (profileErr) {
+      console.log('[backup] profile upsert failed:', profileErr.message);
       return false;
     }
 
-    const res = await fetch(`${API_BASE_URL}/progress/backup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    // Upsert day progress rows in bulk
+    if (payload.days.length > 0) {
+      const rows = payload.days.map((d) => ({
+        user_id: userId,
+        day_number: d.day_number,
+        completed_sentences: d.completed_sentences || {},
+        mastered_sentences: d.mastered_sentences || {},
+        viewed_count: d.viewed_count || {},
+        updated_at: nowIso,
+      }));
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.log('[backup] failed:', res.status, text);
-      return false;
+      const { error: dayErr } = await supabase
+        .from('user_day_progress')
+        .upsert(rows, { onConflict: 'user_id,day_number' });
+
+      if (dayErr) {
+        console.log('[backup] day upsert failed:', dayErr.message);
+        return false;
+      }
     }
 
     lastBackupAt = now;
-    await AsyncStorage.removeItem('progressDirty'); // clear dirty flag after successful sync
+    await AsyncStorage.removeItem('progressDirty');
     console.log('[backup] success — days:', payload.days.length);
     return true;
   } catch (e) {

@@ -32,9 +32,9 @@ export default function AuthScreen() {
       const appReturnUrl = Linking.createURL('/auth/callback');
       console.log('App return URL:', appReturnUrl);
 
-      // Vercel callback page reads ?app_redirect= and forwards tokens/code to it.
+      // GitHub Pages callback page forwards tokens back to the app via deep link.
       const redirectUrl =
-        'https://api.vidhyaly.com/auth/callback?app_redirect=' +
+        'https://telugu-daily.github.io/telugu_daily/auth-callback.html?app_redirect=' +
         encodeURIComponent(appReturnUrl);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
