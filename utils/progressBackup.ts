@@ -102,7 +102,7 @@ export async function backupToCloud(force = false): Promise<boolean> {
 
     const nowIso = new Date().toISOString();
 
-    // Upsert user profile (last_active + join_date + learned_days)
+    // Upsert user profile (last_active + join_date + learned_days) — non-fatal if columns missing
     const profilePayload: any = { id: userId, last_active: nowIso, updated_at: nowIso };
     if (payload.user_join_date) profilePayload.join_date = payload.user_join_date;
     if (payload.learned_days) profilePayload.learned_days = payload.learned_days;
@@ -112,8 +112,8 @@ export async function backupToCloud(force = false): Promise<boolean> {
       .upsert(profilePayload, { onConflict: 'id' });
 
     if (profileErr) {
-      console.log('[backup] profile upsert failed:', profileErr.message);
-      return false;
+      console.log('[backup] profile upsert failed (non-fatal):', profileErr.message);
+      // Don't return — still save day progress below
     }
 
     // Upsert day progress rows in bulk

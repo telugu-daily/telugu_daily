@@ -36,7 +36,7 @@ async function requestPermissions(): Promise<boolean> {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('daily-reminder', {
       name: 'Daily Reminder',
-      importance: Notifications.AndroidImportance.DEFAULT,
+      importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#4ECDC4',
     });
@@ -95,10 +95,14 @@ export function useNotifications(isAuthenticated: boolean, userName?: string) {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Schedule notification once per install (or if not already scheduled)
+    // Schedule notification if not already scheduled for this user name
     AsyncStorage.getItem(NOTIF_SCHEDULED_KEY).then((val) => {
-      if (!val) {
-        scheduleDailyNotification(userName);
+      // Reschedule if: never scheduled, or username changed (key stores last scheduled name)
+      if (!val || val !== (userName || 'there')) {
+        scheduleDailyNotification(userName).then(() => {
+          // Store the name we scheduled for so we reschedule if it changes
+          AsyncStorage.setItem(NOTIF_SCHEDULED_KEY, userName || 'there').catch(() => {});
+        });
       }
     });
 
@@ -124,4 +128,5 @@ export function useNotifications(isAuthenticated: boolean, userName?: string) {
 export async function rescheduleAfterCompletion(userName?: string): Promise<void> {
   await AsyncStorage.removeItem(NOTIF_SCHEDULED_KEY);
   await scheduleDailyNotification(userName);
+  await AsyncStorage.setItem(NOTIF_SCHEDULED_KEY, userName || 'there').catch(() => {});
 }
