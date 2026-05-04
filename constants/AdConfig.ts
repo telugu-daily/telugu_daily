@@ -29,6 +29,7 @@ export const AD_UNIT_IDS = {
 };
 
 // Environment configuration
+// Set to true only for Play Store builds — APKs sideloaded get no-fill errors
 const IS_PRODUCTION = true; // Set to true for real ads, false for test ads
 
 // Helper function to get the appropriate ad unit ID
