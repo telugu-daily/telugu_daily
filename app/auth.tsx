@@ -10,12 +10,16 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/utils/supabase';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import GoogleLogo from '@/components/GoogleLogo';
 
-// Required so the in-app browser closes properly after auth completes
+// Required for expo-auth-session to close the browser after auth
 WebBrowser.maybeCompleteAuthSession();
+
+// Google OAuth Web Client ID (from Google Cloud Console)
+const GOOGLE_CLIENT_ID = '157699822144-ajgirotosgjm814sg2re8lrc8jnp3jap.apps.googleusercontent.com';
 
 export default function AuthScreen() {
   const [isSignInLoading, setIsSignInLoading] = useState(false);
@@ -27,89 +31,105 @@ export default function AuthScreen() {
     setter(true);
     setError(null);
     try {
-      // Build a deep link that works in BOTH Expo Go (exp://...) and production (myapp://...).
-      const appReturnUrl = Linking.createURL('/auth/callback');
-      console.log('App return URL:', appReturnUrl);
-
-      // Web vs Native: on web (Chrome / PWA) we must use a browser redirect
-      // flow — deep links won't be handled by the browser. For native apps
-      // we keep the in-app browser + deep-link return flow.
       if (Platform.OS === 'web') {
-        const webRedirect = `${window.location.origin}/auth-callback.html`;
+        // Web flow: use Supabase OAuth directly (full page redirect)
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
-          options: {
-            redirectTo: webRedirect,
-          },
+          options: { redirectTo: window.location.origin },
         });
         if (error) throw error;
-        if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
-        window.location.href = data.url;
+        if (data?.url) window.location.href = data.url;
         return;
       }
 
-      // ─── Native OAuth Flow ─────────────────────────────────────────────
-      // 1. Supabase PKCE flow redirects to our HTTPS callback page
-      // 2. The callback page extracts tokens/code and redirects to myapp://auth/callback
-      // 3. openAuthSessionAsync detects the myapp:// navigation and closes the Custom Tab
-      // 4. We get the full URL back and create the session
-      const httpsRedirect = 'https://telugu-daily.github.io/telugu_daily/auth-callback.html';
+      // ─── Native: Google OAuth directly via expo-auth-session ────────────
+      // This shows "Telugu Daily" on the consent screen (not Supabase URL)
+      // and auto-closes the Custom Tab after auth completes.
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: httpsRedirect,
-          skipBrowserRedirect: true,
-        },
+      // Generate PKCE code verifier & challenge using expo-crypto
+      const randomBytes = await Crypto.getRandomBytesAsync(32);
+      const codeVerifier = btoa(String.fromCharCode(...randomBytes))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      const digest = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        codeVerifier,
+        { encoding: Crypto.CryptoEncoding.BASE64 }
+      );
+      const codeChallenge = digest
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      // Build redirect URI for Google OAuth.
+      // In standalone builds: uses 'myapp://auth/callback' (custom scheme)
+      // In Expo Go: uses exp://... scheme automatically
+      // openAuthSessionAsync detects this redirect and auto-closes the Custom Tab.
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'myapp',
+        path: 'auth/callback',
+        native: 'myapp://auth/callback',
       });
+      console.log('OAuth redirect URI:', redirectUri);
 
-      if (error) throw error;
-      if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
+      // Build Google OAuth URL manually with PKCE
+      const authUrl =
+        'https://accounts.google.com/o/oauth2/v2/auth?' +
+        new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          redirect_uri: redirectUri,
+          response_type: 'code',
+          scope: 'openid email profile',
+          code_challenge: codeChallenge,
+          code_challenge_method: 'S256',
+          prompt: 'select_account',
+        }).toString();
 
-      // appReturnUrl = myapp://auth/callback (production) or exp://...  (Expo Go)
-      // Chrome Custom Tabs detect this custom-scheme redirect and close automatically.
-      const result = await WebBrowser.openAuthSessionAsync(data.url, appReturnUrl, {
-        showInRecents: false,
-        toolbarColor: '#4ECDC4',
-        secondaryToolbarColor: '#3BB8B0',
-        enableBarCollapsing: false,
-        showTitle: false,
-      });
-      console.log('WebBrowser result:', JSON.stringify(result));
+      // Open in Custom Tab — auto-closes when redirect matches myapp://
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+      console.log('Auth result type:', result.type);
 
       if (result.type === 'success' && result.url) {
-        // Extract code/tokens from the returned deep-link URL
-        const returnedUrl = result.url;
-        const hash = returnedUrl.split('#')[1];
-        const query = returnedUrl.split('?')[1]?.split('#')[0];
+        // Extract the authorization code from the redirect URL
+        const url = new URL(result.url);
+        const code = url.searchParams.get('code');
 
-        if (hash) {
-          const params = new URLSearchParams(hash);
-          const access_token = params.get('access_token');
-          const refresh_token = params.get('refresh_token');
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({ access_token, refresh_token });
-            setter(false);
-            return;
-          }
+        if (!code) throw new Error('No authorization code received');
+
+        // Exchange code for tokens with Google
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: GOOGLE_CLIENT_ID,
+            code,
+            code_verifier: codeVerifier,
+            grant_type: 'authorization_code',
+            redirect_uri: redirectUri,
+          }).toString(),
+        });
+
+        const tokens = await tokenResponse.json();
+        console.log('Token exchange status:', tokenResponse.status);
+
+        if (!tokens.id_token) {
+          throw new Error(tokens.error_description || 'Failed to get ID token from Google');
         }
-        if (query) {
-          const params = new URLSearchParams(query);
-          const code = params.get('code');
-          if (code) {
-            await supabase.auth.exchangeCodeForSession(code);
-            setter(false);
-            return;
-          }
-        }
-        // If we got here, the useAuth deep link listener may handle it instead.
-        // Give it a moment then reset loading state.
-        setTimeout(() => setter(false), 3000);
+
+        // Sign in to Supabase using the Google ID token
+        const { error: supaError } = await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token: tokens.id_token,
+          access_token: tokens.access_token,
+        });
+
+        if (supaError) throw supaError;
+        setter(false);
       } else if (result.type === 'cancel' || result.type === 'dismiss') {
         setter(false);
-        return;
       } else {
-        throw new Error('Authentication failed');
+        throw new Error('Authentication was not completed');
       }
     } catch (e: any) {
       console.error('Auth Error:', e);
