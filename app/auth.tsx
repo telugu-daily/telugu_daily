@@ -31,15 +31,19 @@ export default function AuthScreen() {
       const appReturnUrl = Linking.createURL('/auth/callback');
       console.log('App return URL:', appReturnUrl);
 
-      // GitHub Pages callback page forwards tokens back to the app via deep link.
-      const redirectUrl =
-        'https://telugu-daily.github.io/telugu_daily/auth-callback.html?app_redirect=' +
-        encodeURIComponent(appReturnUrl);
+      // Use the app deep link directly as the OAuth redirect so the whole
+      // flow completes inside the in-app browser and returns control to the app.
+      // NOTE: Add this deep link (e.g. myapp://auth/callback) to your Supabase
+      // project's OAuth redirect URLs in the dashboard or the provider settings.
+      const redirectUrl = appReturnUrl;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
+          // For mobile in-app flows, set skipBrowserRedirect: true so Supabase
+          // returns the auth URL that works with WebBrowser.openAuthSessionAsync
+          // and the app deep link return.
           skipBrowserRedirect: true,
         },
       });

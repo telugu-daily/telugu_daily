@@ -134,8 +134,9 @@ export default function HomeScreen() {
   const [todaysSentences, setTodaysSentences] = useState<Sentence[]>([]);
 
   // Sentences are loaded via loadSentencesForDay
-  const completedCount = Object.keys(completedSentences).length;
-  const masteredCount = Object.keys(masteredSentences).length;
+  // Cap at 50 — each day has exactly 50 sentences
+  const completedCount = Math.min(Object.keys(completedSentences).length, 50);
+  const masteredCount = Math.min(Object.keys(masteredSentences).length, 50);
 
   // Calculate user's current day with better debugging
   const calculateUserCurrentDay = (userJoinDate: Date): number => {
@@ -309,15 +310,10 @@ export default function HomeScreen() {
         AsyncStorage.getItem(`viewedCount_day_${dayNumber}`)
       ]);
 
-      // If day-specific data exists, use it
-      if (storedCompleted || storedMastered || storedViewed) {
-        setCompletedSentences(storedCompleted ? JSON.parse(storedCompleted) : {});
-        setMasteredSentences(storedMastered ? JSON.parse(storedMastered) : {});
-        setViewedCount(storedViewed ? JSON.parse(storedViewed) : {});
-      } else {
-        // Fallback to old format for backward compatibility
-        await loadStoredData();
-      }
+      // Always use day-specific data — empty {} for a fresh day, saved data if exists
+      setCompletedSentences(storedCompleted ? JSON.parse(storedCompleted) : {});
+      setMasteredSentences(storedMastered ? JSON.parse(storedMastered) : {});
+      setViewedCount(storedViewed ? JSON.parse(storedViewed) : {});
 
     } catch (error) {
       console.log('Error loading day specific data:', error);
@@ -581,12 +577,7 @@ export default function HomeScreen() {
         colors={['#4ECDC4', '#44B3AC']}
         style={styles.compactHeader}
       >
-        <View style={styles.headerContent}>
-          <Text style={styles.appTitle}>Telugu  Daily</Text>
-          <TouchableOpacity style={styles.resetButton} onPress={resetProgress}>
-            <RotateCcw size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        <View style={styles.headerContent} />
 
         {/* Debug button to refresh day manually */}
         <TouchableOpacity
@@ -600,7 +591,11 @@ export default function HomeScreen() {
               {daysInJourney === 0 ? '🎉 Starting today' : `📅 Day ${daysInJourney + 1} of journey`}
             </Text>
           </View>
-          <User size={14} color="#FFFFFF" />
+
+          {/* Reset button moved into Day/Journey area */}
+          <TouchableOpacity style={styles.resetButton} onPress={resetProgress}>
+            <RotateCcw size={18} color="#FFFFFF" />
+          </TouchableOpacity>
         </TouchableOpacity>
 
         <View style={styles.compactProgressContainer}>
@@ -611,7 +606,7 @@ export default function HomeScreen() {
 
           <View style={styles.compactProgressItem}>
             <Text style={styles.compactProgressEmoji}>🌳</Text>
-            <Text style={styles.compactProgressNumber}>{masteredCount}</Text>
+            <Text style={styles.compactProgressNumber}>{masteredCount}/50</Text>
             <Text style={styles.compactProgressLabel}>Mastered</Text>
           </View>
 
@@ -686,17 +681,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-SemiBold',
   },
   compactHeader: {
-    height: screenHeight * 0.35,
-    paddingTop: 40,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    justifyContent: 'space-between',
+    height: screenHeight * 0.24,
+    paddingTop: 22,
+    paddingBottom: 10,
+    paddingHorizontal: 16,
+    justifyContent: 'flex-start',
   },
   headerContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   appTitle: {
     fontSize: 24,
@@ -706,7 +701,7 @@ const styles = StyleSheet.create({
   resetButton: {
     padding: 6,
     borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#FF7043', // softer Material orange for better UI
   },
   compactDayContainer: {
     flexDirection: 'row',
@@ -714,6 +709,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     padding: 12,
+    marginTop: 10,
     borderRadius: 10,
     marginBottom: 12,
   },
