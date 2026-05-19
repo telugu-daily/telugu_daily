@@ -52,19 +52,15 @@ export default function AuthScreen() {
         return;
       }
 
-      // Native path: Use the app deep link directly as the OAuth redirect so the whole
-      // flow completes inside the in-app browser and returns control to the app.
-      // NOTE: Add this deep link (e.g. myapp://auth/callback) to your Supabase
-      // project's OAuth redirect URLs in the dashboard or the provider settings.
-      const redirectUrl = appReturnUrl;
+      // Native path: Use the GitHub Pages callback as the OAuth redirect.
+      // Supabase PKCE/code exchange requires an HTTPS redirect URL.
+      // The callback page will forward tokens into the app via deep link.
+      const httpsRedirect = 'https://telugu-daily.github.io/telugu_daily/auth-callback.html';
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
-          // For mobile in-app flows, set skipBrowserRedirect: true so Supabase
-          // returns the auth URL that works with WebBrowser.openAuthSessionAsync
-          // and the app deep link return.
+          redirectTo: httpsRedirect,
           skipBrowserRedirect: true,
         },
       });
@@ -72,8 +68,10 @@ export default function AuthScreen() {
       if (error) throw error;
       if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
 
-      // Open Google sign-in inside an in-app browser (Custom Tab on Android, SFSafariViewController on iOS).
-      // It auto-closes when the URL matches `appReturnUrl` and returns control to the app.
+      // Open Google sign-in inside an in-app browser (Custom Tab on Android).
+      // The returnUrl tells the Custom Tab when to close and hand control back.
+      // We use the HTTPS callback URL since Supabase redirects there first,
+      // then the page forwards tokens into the app via intent:// deep link.
       const result = await WebBrowser.openAuthSessionAsync(data.url, appReturnUrl, {
         showInRecents: false,
         toolbarColor: '#4ECDC4',
