@@ -31,7 +31,28 @@ export default function AuthScreen() {
       const appReturnUrl = Linking.createURL('/auth/callback');
       console.log('App return URL:', appReturnUrl);
 
-      // Use the app deep link directly as the OAuth redirect so the whole
+      // Web vs Native: on web (Chrome / PWA) we must use a browser redirect
+      // flow — deep links won't be handled by the browser. For native apps
+      // we keep the in-app browser + deep-link return flow.
+      if (Platform.OS === 'web') {
+        // For web, redirect back to Supabase callback (hosted) which then
+        // forwards to the app fallback page. Ensure this URL is in your
+        // Supabase & Google redirect allowlists.
+        const webRedirect = `${window.location.origin}/auth-callback.html`;
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: webRedirect,
+          },
+        });
+        if (error) throw error;
+        if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
+        // Use a full-window redirect on web so the OAuth flow completes cleanly.
+        window.location.href = data.url;
+        return;
+      }
+
+      // Native path: Use the app deep link directly as the OAuth redirect so the whole
       // flow completes inside the in-app browser and returns control to the app.
       // NOTE: Add this deep link (e.g. myapp://auth/callback) to your Supabase
       // project's OAuth redirect URLs in the dashboard or the provider settings.
