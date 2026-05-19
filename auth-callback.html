@@ -5,39 +5,47 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Auth callback</title>
     <style>
-      body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color:#222 }
-      a.button { display:inline-block; padding:10px 14px; background:#4ECDC4; color:#fff; border-radius:6px; text-decoration:none }
+      body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color:#222; text-align:center }
+      a.button { display:inline-block; padding:12px 20px; background:#4ECDC4; color:#fff; border-radius:8px; text-decoration:none; margin-top:16px }
     </style>
   </head>
   <body>
-    <h3>Returning to app…</h3>
-    <p>If your app does not open automatically, tap the button below.</p>
+    <h3>Signing you in…</h3>
+    <p>Redirecting back to the app.</p>
     <p id="manual"></p>
 
     <script>
       (function(){
-        // Read fragment (#) or query (?) that contains tokens from Supabase
+        // Supabase sends tokens in fragment (#) or code in query (?)
         var hash = window.location.hash || '';
         var search = window.location.search || '';
+        // Combine: prefer hash (implicit flow), else query (PKCE code flow)
         var payload = hash || search || '';
 
-        // Primary deep link used by the native app
-        var appLink = 'myapp://auth/callback' + payload;
+        // Build the deep link that the native app listens for.
+        // openAuthSessionAsync will detect this custom-scheme navigation and
+        // close the Custom Tab, returning the full URL to the app.
+        var deepLink = 'myapp://auth/callback' + payload;
 
-        // Android intent:// URL — Chrome respects this even in Custom Tabs
-        // Package name must match your app's applicationId
-        var intentLink = 'intent://auth/callback' + payload +
-          '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
+        // Attempt 1: direct custom scheme redirect
+        // On Android Chrome Custom Tabs, this triggers the registered intent filter
+        // and expo-web-browser's returnUrl detection closes the tab.
+        window.location.replace(deepLink);
 
-        // Try intent link first (works reliably in Chrome Custom Tabs on Android)
-        window.location.replace(intentLink);
+        // Attempt 2 (fallback after 500ms): Android intent URI
+        // This is more reliable if the plain scheme redirect doesn't trigger
+        setTimeout(function(){
+          var intentUri = 'intent://auth/callback' + payload +
+            '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
+          window.location.replace(intentUri);
+        }, 500);
 
-        // Fallback: after 1s show manual buttons
+        // Attempt 3 (fallback after 2s): show manual button
         setTimeout(function(){
           var p = document.getElementById('manual');
-          p.innerHTML = '<a class="button" href="' + appLink + '">Open Telugu Daily</a>' +
-                        '<p style="margin-top:12px;color:#666">If the app doesn\'t open, make sure it is installed and try again.</p>';
-        }, 1000);
+          p.innerHTML = '<p style="color:#666">If the app did not open automatically:</p>' +
+                        '<a class="button" href="' + deepLink + '">Open Telugu Daily</a>';
+        }, 2000);
       })();
     </script>
   </body>

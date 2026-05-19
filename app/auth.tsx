@@ -35,9 +35,6 @@ export default function AuthScreen() {
       // flow — deep links won't be handled by the browser. For native apps
       // we keep the in-app browser + deep-link return flow.
       if (Platform.OS === 'web') {
-        // For web, redirect back to Supabase callback (hosted) which then
-        // forwards to the app fallback page. Ensure this URL is in your
-        // Supabase & Google redirect allowlists.
         const webRedirect = `${window.location.origin}/auth-callback.html`;
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
@@ -47,14 +44,15 @@ export default function AuthScreen() {
         });
         if (error) throw error;
         if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
-        // Use a full-window redirect on web so the OAuth flow completes cleanly.
         window.location.href = data.url;
         return;
       }
 
-      // Native path: Use the GitHub Pages callback as the OAuth redirect.
-      // Supabase PKCE/code exchange requires an HTTPS redirect URL.
-      // The callback page will forward tokens into the app via deep link.
+      // ─── Native OAuth Flow ─────────────────────────────────────────────
+      // 1. Supabase PKCE flow redirects to our HTTPS callback page
+      // 2. The callback page extracts tokens/code and redirects to myapp://auth/callback
+      // 3. openAuthSessionAsync detects the myapp:// navigation and closes the Custom Tab
+      // 4. We get the full URL back and create the session
       const httpsRedirect = 'https://telugu-daily.github.io/telugu_daily/auth-callback.html';
 
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -68,21 +66,19 @@ export default function AuthScreen() {
       if (error) throw error;
       if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
 
-      // Open Google sign-in inside an in-app browser (Custom Tab on Android).
-      // The returnUrl tells the Custom Tab when to auto-close. We use the
-      // HTTPS callback URL so the tab closes as soon as Supabase redirects there,
-      // and we get the full URL (with code/tokens) back in `result.url`.
-      const result = await WebBrowser.openAuthSessionAsync(data.url, httpsRedirect, {
+      // appReturnUrl = myapp://auth/callback (production) or exp://...  (Expo Go)
+      // Chrome Custom Tabs detect this custom-scheme redirect and close automatically.
+      const result = await WebBrowser.openAuthSessionAsync(data.url, appReturnUrl, {
         showInRecents: false,
         toolbarColor: '#4ECDC4',
         secondaryToolbarColor: '#3BB8B0',
         enableBarCollapsing: false,
         showTitle: false,
       });
-      console.log('WebBrowser result:', result);
+      console.log('WebBrowser result:', JSON.stringify(result));
 
       if (result.type === 'success' && result.url) {
-        // Extract code/tokens from the returned URL and create the Supabase session
+        // Extract code/tokens from the returned deep-link URL
         const returnedUrl = result.url;
         const hash = returnedUrl.split('#')[1];
         const query = returnedUrl.split('?')[1]?.split('#')[0];
@@ -93,6 +89,7 @@ export default function AuthScreen() {
           const refresh_token = params.get('refresh_token');
           if (access_token && refresh_token) {
             await supabase.auth.setSession({ access_token, refresh_token });
+            setter(false);
             return;
           }
         }
@@ -101,12 +98,14 @@ export default function AuthScreen() {
           const code = params.get('code');
           if (code) {
             await supabase.auth.exchangeCodeForSession(code);
+            setter(false);
             return;
           }
         }
-        throw new Error('No auth tokens found in redirect URL');
+        // If we got here, the useAuth deep link listener may handle it instead.
+        // Give it a moment then reset loading state.
+        setTimeout(() => setter(false), 3000);
       } else if (result.type === 'cancel' || result.type === 'dismiss') {
-        // User closed the browser
         setter(false);
         return;
       } else {
