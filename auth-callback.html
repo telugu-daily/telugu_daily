@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Auth callback</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color:#222 }
+      a.button { display:inline-block; padding:10px 14px; background:#4ECDC4; color:#fff; border-radius:6px; text-decoration:none }
+    </style>
+  </head>
+  <body>
+    <h3>Returning to app…</h3>
+    <p>If your app does not open automatically, tap the button below.</p>
+    <p id="manual"></p>
+
+    <script>
+      (function(){
+        // Read fragment (#) or query (?) that contains tokens from Supabase
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+        const payload = hash || search || '';
+
+        // Primary deep link used by the native app
+        const appLink = 'myapp://auth/callback' + payload;
+
+        // As a secondary fallback, exp:// dev scheme (used in Expo Go)
+        const expLink = 'exp://127.0.0.1:19000/--/auth/callback' + payload;
+
+        // Try to open the app via the deep link
+        function openLink(link){
+          try {
+            window.location.replace(link);
+          } catch(e) {
+            window.location.href = link;
+          }
+        }
+
+        // First attempt: native app deep link
+        openLink(appLink);
+
+        // After a short delay show a manual open link (covers browsers that block redirects)
+        setTimeout(function(){
+          var p = document.getElementById('manual');
+          p.innerHTML = '<a class="button" id="openApp" href="' + appLink + '">Open in App</a>' +
+                        '&nbsp; <a class="button" href="' + expLink + '">Open in Expo</a>' +
+                        '<p style="margin-top:12px;color:#666">If those links don\'t work, copy the URL from the address bar and paste it into the app developer console.</p>';
+        }, 600);
+      })();
+    </script>
+  </body>
+</html>
