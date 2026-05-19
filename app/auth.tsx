@@ -69,10 +69,10 @@ export default function AuthScreen() {
       if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
 
       // Open Google sign-in inside an in-app browser (Custom Tab on Android).
-      // The returnUrl tells the Custom Tab when to close and hand control back.
-      // We use the HTTPS callback URL since Supabase redirects there first,
-      // then the page forwards tokens into the app via intent:// deep link.
-      const result = await WebBrowser.openAuthSessionAsync(data.url, appReturnUrl, {
+      // The returnUrl tells the Custom Tab when to auto-close. We use the
+      // HTTPS callback URL so the tab closes as soon as Supabase redirects there,
+      // and we get the full URL (with code/tokens) back in `result.url`.
+      const result = await WebBrowser.openAuthSessionAsync(data.url, httpsRedirect, {
         showInRecents: false,
         toolbarColor: '#4ECDC4',
         secondaryToolbarColor: '#3BB8B0',
