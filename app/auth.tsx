@@ -11,11 +11,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/utils/supabase';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import GoogleLogo from '@/components/GoogleLogo';
 
-// Required for expo-auth-session to close the browser after auth
+// Required for expo-web-browser to close the browser after auth
 WebBrowser.maybeCompleteAuthSession();
 
 // Google OAuth Web Client ID (from Google Cloud Console)
@@ -42,9 +41,9 @@ export default function AuthScreen() {
         return;
       }
 
-      // ─── Native: Google OAuth directly via expo-auth-session ────────────
-      // This shows "Telugu Daily" on the consent screen (not Supabase URL)
-      // and auto-closes the Custom Tab after auth completes.
+      // ─── Native: Google OAuth directly ────────────────────────────────
+      // Uses HTTPS redirect to GitHub Pages callback, which then deep-links
+      // back to the app. Shows "Telugu Daily" on consent screen.
 
       // Generate PKCE code verifier & challenge using expo-crypto
       const randomBytes = await Crypto.getRandomBytesAsync(32);
@@ -62,23 +61,22 @@ export default function AuthScreen() {
         .replace(/\//g, '_')
         .replace(/=+$/, '');
 
-      // Build redirect URI for Google OAuth.
-      // In standalone builds: uses 'myapp://auth/callback' (custom scheme)
-      // In Expo Go: uses exp://... scheme automatically
-      // openAuthSessionAsync detects this redirect and auto-closes the Custom Tab.
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'myapp',
-        path: 'auth/callback',
-        native: 'myapp://auth/callback',
-      });
-      console.log('OAuth redirect URI:', redirectUri);
+      // HTTPS redirect URI that Google's Web client accepts.
+      // The callback page will forward to the app's custom scheme.
+      const googleRedirectUri = 'https://telugu-daily.github.io/telugu_daily/auth-callback.html';
 
-      // Build Google OAuth URL manually with PKCE
+      // The URL that openAuthSessionAsync listens for to auto-close the Custom Tab
+      const appReturnUri = 'myapp://auth/callback';
+
+      console.log('OAuth redirect URI:', googleRedirectUri);
+      console.log('App return URI:', appReturnUri);
+
+      // Build Google OAuth URL with PKCE
       const authUrl =
         'https://accounts.google.com/o/oauth2/v2/auth?' +
         new URLSearchParams({
           client_id: GOOGLE_CLIENT_ID,
-          redirect_uri: redirectUri,
+          redirect_uri: googleRedirectUri,
           response_type: 'code',
           scope: 'openid email profile',
           code_challenge: codeChallenge,
@@ -86,8 +84,8 @@ export default function AuthScreen() {
           prompt: 'select_account',
         }).toString();
 
-      // Open in Custom Tab — auto-closes when redirect matches myapp://
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+      // Open in Custom Tab — closes when it detects navigation to myapp://
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUri);
       console.log('Auth result type:', result.type);
 
       if (result.type === 'success' && result.url) {
@@ -98,6 +96,7 @@ export default function AuthScreen() {
         if (!code) throw new Error('No authorization code received');
 
         // Exchange code for tokens with Google
+        // redirect_uri must match what was used in the authorization request
         const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -106,7 +105,7 @@ export default function AuthScreen() {
             code,
             code_verifier: codeVerifier,
             grant_type: 'authorization_code',
-            redirect_uri: redirectUri,
+            redirect_uri: googleRedirectUri,
           }).toString(),
         });
 

@@ -16,11 +16,12 @@
 
     <script>
       (function(){
-        // Supabase sends tokens in fragment (#) or code in query (?)
-        var hash = window.location.hash || '';
+        // Google OAuth sends the authorization code as a query parameter (?code=...)
+        // Forward it to the app via custom scheme deep link.
         var search = window.location.search || '';
-        // Combine: prefer hash (implicit flow), else query (PKCE code flow)
-        var payload = hash || search || '';
+        var hash = window.location.hash || '';
+        // Prefer query params (PKCE code flow), fallback to hash (implicit)
+        var payload = search || hash || '';
 
         // Build the deep link that the native app listens for.
         // openAuthSessionAsync will detect this custom-scheme navigation and
