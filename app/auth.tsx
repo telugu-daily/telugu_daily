@@ -17,8 +17,9 @@ import GoogleLogo from '@/components/GoogleLogo';
 // Required for expo-web-browser to close the browser after auth
 WebBrowser.maybeCompleteAuthSession();
 
-// Google OAuth Web Client ID (from Google Cloud Console)
-const GOOGLE_CLIENT_ID = '157699822144-ajgirotosgjm814sg2re8lrc8jnp3jap.apps.googleusercontent.com';
+// Google OAuth Web Client credentials (injected via EAS environment variables)
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_SECRET || '';
 
 export default function AuthScreen() {
   const [isSignInLoading, setIsSignInLoading] = useState(false);
@@ -102,6 +103,7 @@ export default function AuthScreen() {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({
             client_id: GOOGLE_CLIENT_ID,
+            client_secret: GOOGLE_CLIENT_SECRET,
             code,
             code_verifier: codeVerifier,
             grant_type: 'authorization_code',
