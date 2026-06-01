@@ -45,8 +45,8 @@ export default function AuthScreen() {
       // Linking.createURL gives exp://... in Expo Go, myapp://... in standalone
       const returnUrl = Linking.createURL('auth/callback');
 
-      // GitHub Pages callback - reads Supabase params and redirects to the app
-      const redirectTo = `https://telugu-daily.github.io/telugu_daily/auth-callback.html?app_redirect=${encodeURIComponent(returnUrl)}`;
+      // GitHub Pages callback - redirects to the app's deep link scheme
+      const redirectTo = 'https://telugu-daily.github.io/telugu_daily/auth-callback.html';
 
       console.log('Return URL:', returnUrl);
       console.log('Redirect to:', redirectTo);
@@ -56,6 +56,12 @@ export default function AuthScreen() {
         options: {
           redirectTo,
           skipBrowserRedirect: true,
+          queryParams: {
+            // Force implicit flow: tokens come directly in URL hash
+            // Avoids PKCE code exchange issues on mobile
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
 
@@ -65,27 +71,30 @@ export default function AuthScreen() {
       // Open in Custom Tab — closes when it detects navigation to our app scheme
       const result = await WebBrowser.openAuthSessionAsync(data.url, returnUrl);
       console.log('Auth result type:', result.type);
+      console.log('Auth result url:', result.type === 'success' ? result.url : 'none');
 
       if (result.type === 'success' && result.url) {
         // Extract the Supabase auth code from the redirect URL
         const url = new URL(result.url);
         const code = url.searchParams.get('code');
 
-        // Try hash params (implicit flow fallback)
+        // Try hash params (implicit flow)
         const hashParams = url.hash ? new URLSearchParams(url.hash.substring(1)) : null;
         const accessToken = hashParams?.get('access_token');
         const refreshToken = hashParams?.get('refresh_token');
 
-        if (code) {
-          // PKCE flow: exchange code for session
-          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-          if (sessionError) throw sessionError;
-        } else if (accessToken && refreshToken) {
+        if (accessToken && refreshToken) {
           // Implicit flow: set session directly
+          console.log('Setting session from tokens...');
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
+          if (sessionError) throw sessionError;
+        } else if (code) {
+          // PKCE flow fallback: exchange code for session
+          console.log('Exchanging code for session...');
+          const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
           if (sessionError) throw sessionError;
         } else {
           throw new Error('No auth code or tokens received');
@@ -93,6 +102,14 @@ export default function AuthScreen() {
 
         setter(false);
       } else if (result.type === 'cancel' || result.type === 'dismiss') {
+        // The browser closed — the deep link handler in useAuth.tsx
+        // may have already processed the redirect. Wait briefly and check.
+        console.log('Browser dismissed, checking if auth completed via deep link...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log('Session found after dismiss — auth succeeded via deep link');
+        }
         setter(false);
       } else {
         throw new Error('Authentication was not completed');

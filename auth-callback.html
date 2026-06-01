@@ -21,38 +21,27 @@
 
     <script>
       (function () {
-        var url = new URL(window.location.href);
-        // Pull app_redirect from the query (set by the app with the correct deep link scheme)
-        var appRedirect = url.searchParams.get('app_redirect');
-        url.searchParams.delete('app_redirect');
+        // Supabase redirects here with ?code=... (PKCE) or #access_token=... (implicit)
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
 
-        var search = url.search || '';        // remaining query params (?code=...)
-        var hash = window.location.hash || ''; // hash params (#access_token=...)
-
-        var target;
-        if (appRedirect) {
-          // Append Supabase's auth params to the app's deep link
-          var sep = appRedirect.indexOf('?') === -1 ? '?' : '&';
-          var qs = search.replace(/^\?/, '');
-          target = appRedirect + (qs ? sep + qs : '') + hash;
-        } else {
-          // Fallback: use myapp:// scheme
-          target = 'myapp://auth/callback' + search + hash;
-        }
+        // Build deep link to the app
+        var target = 'myapp://auth/callback' + search + hash;
 
         // Set manual link
         var link = document.getElementById('openLink');
         link.href = target;
 
-        // Attempt 1: direct redirect
-        window.location.href = target;
+        // Attempt 1: Android intent URI (most reliable for custom schemes)
+        var intentSearch = search || '';
+        var intentUri = 'intent://auth/callback' + intentSearch + hash +
+          '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
+        window.location.href = intentUri;
 
-        // Attempt 2 (fallback after 500ms): Android intent URI
+        // Attempt 2 (fallback after 300ms): direct custom scheme
         setTimeout(function () {
-          var intentUri = 'intent://auth/callback' + search + hash +
-            '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
-          window.location.href = intentUri;
-        }, 500);
+          window.location.href = target;
+        }, 300);
 
         // Attempt 3 (fallback after 1.5s): show manual button
         setTimeout(function () {
