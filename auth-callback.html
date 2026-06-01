@@ -3,53 +3,61 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Auth callback</title>
+    <title>Signing in to Telugu Daily...</title>
     <style>
-      body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color:#222; text-align:center }
-      a.button { display:inline-block; padding:12px 20px; background:#4ECDC4; color:#fff; border-radius:8px; text-decoration:none; margin-top:16px }
+      body { font-family: sans-serif; text-align: center; padding: 60px 20px; background: #4ECDC4; color: white; }
+      h2 { font-size: 24px; margin-bottom: 12px; }
+      p { font-size: 14px; opacity: 0.9; line-height: 1.5; }
+      a { color: white; font-weight: bold; display: inline-block; margin-top: 12px; padding: 10px 18px; border: 2px solid white; border-radius: 8px; text-decoration: none; }
     </style>
   </head>
   <body>
-    <h3>Signing you in…</h3>
-    <p>Redirecting back to the app.</p>
-    <p id="manual"></p>
+    <h2>తె Telugu Daily</h2>
+    <p>Signing you in... Opening the app automatically.</p>
+    <p id="manual" style="display:none">
+      If the app did not open, tap below:<br>
+      <a id="openLink" href="#">Open Telugu Daily</a>
+    </p>
 
     <script>
-      (function(){
-        // Google OAuth sends the authorization code as a query parameter (?code=...&state=...)
-        var params = new URLSearchParams(window.location.search);
-        var code = params.get('code') || '';
-        var stateRaw = params.get('state') || '';
+      (function () {
+        var url = new URL(window.location.href);
+        // Pull app_redirect from the query (set by the app with the correct deep link scheme)
+        var appRedirect = url.searchParams.get('app_redirect');
+        url.searchParams.delete('app_redirect');
 
-        // Decode return URI from state (set by the app to support Expo Go and standalone)
-        var returnUri = 'myapp://auth/callback'; // default fallback
-        try {
-          if (stateRaw) {
-            var stateObj = JSON.parse(atob(stateRaw));
-            if (stateObj.returnUri) returnUri = stateObj.returnUri;
-          }
-        } catch(e) { /* use default */ }
+        var search = url.search || '';        // remaining query params (?code=...)
+        var hash = window.location.hash || ''; // hash params (#access_token=...)
 
-        // Build deep link with code param
-        var separator = returnUri.indexOf('?') >= 0 ? '&' : '?';
-        var deepLink = returnUri + separator + 'code=' + encodeURIComponent(code);
+        var target;
+        if (appRedirect) {
+          // Append Supabase's auth params to the app's deep link
+          var sep = appRedirect.indexOf('?') === -1 ? '?' : '&';
+          var qs = search.replace(/^\?/, '');
+          target = appRedirect + (qs ? sep + qs : '') + hash;
+        } else {
+          // Fallback: use myapp:// scheme
+          target = 'myapp://auth/callback' + search + hash;
+        }
 
-        // Attempt 1: direct redirect to the app's scheme
-        window.location.replace(deepLink);
+        // Set manual link
+        var link = document.getElementById('openLink');
+        link.href = target;
 
-        // Attempt 2 (fallback after 500ms): Android intent URI for standalone builds
-        setTimeout(function(){
-          var intentUri = 'intent://auth/callback?code=' + encodeURIComponent(code) +
+        // Attempt 1: direct redirect
+        window.location.href = target;
+
+        // Attempt 2 (fallback after 500ms): Android intent URI
+        setTimeout(function () {
+          var intentUri = 'intent://auth/callback' + search + hash +
             '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
-          window.location.replace(intentUri);
+          window.location.href = intentUri;
         }, 500);
 
-        // Attempt 3 (fallback after 2s): show manual button
-        setTimeout(function(){
-          var p = document.getElementById('manual');
-          p.innerHTML = '<p style="color:#666">If the app did not open automatically:</p>' +
-                        '<a class="button" href="' + deepLink + '">Open Telugu Daily</a>';
-        }, 2000);
+        // Attempt 3 (fallback after 1.5s): show manual button
+        setTimeout(function () {
+          document.getElementById('manual').style.display = 'block';
+        }, 1500);
       })();
     </script>
   </body>

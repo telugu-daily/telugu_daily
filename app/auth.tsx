@@ -40,14 +40,13 @@ export default function AuthScreen() {
 
       // ─── Native: Supabase OAuth via backend callback ─────────────────
       // Uses Supabase's OAuth flow which handles Google auth + token exchange.
-      // The backend's /auth/callback page redirects back to the app via deep link.
+      // GitHub Pages callback page redirects back to the app via deep link.
 
       // Linking.createURL gives exp://... in Expo Go, myapp://... in standalone
       const returnUrl = Linking.createURL('auth/callback');
 
-      // Backend callback will read app_redirect and forward tokens to the app
-      const apiBase = (process.env.EXPO_PUBLIC_API_URL || 'https://api.vidhyaly.com/api').replace('/api', '');
-      const redirectTo = `${apiBase}/auth/callback?app_redirect=${encodeURIComponent(returnUrl)}`;
+      // GitHub Pages callback - reads Supabase params and redirects to the app
+      const redirectTo = `https://telugu-daily.github.io/telugu_daily/auth-callback.html?app_redirect=${encodeURIComponent(returnUrl)}`;
 
       console.log('Return URL:', returnUrl);
       console.log('Redirect to:', redirectTo);
