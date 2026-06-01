@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/utils/supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
+import * as Linking from 'expo-linking';
 import GoogleLogo from '@/components/GoogleLogo';
 
 // Required for expo-web-browser to close the browser after auth
@@ -67,10 +68,14 @@ export default function AuthScreen() {
       const googleRedirectUri = 'https://telugu-daily.github.io/telugu_daily/auth-callback.html';
 
       // The URL that openAuthSessionAsync listens for to auto-close the Custom Tab
-      const appReturnUri = 'myapp://auth/callback';
+      // Linking.createURL gives exp://... in Expo Go, myapp://... in standalone
+      const appReturnUri = Linking.createURL('auth/callback');
 
       console.log('OAuth redirect URI:', googleRedirectUri);
       console.log('App return URI:', appReturnUri);
+
+      // Encode the app return URI in state so the callback page knows where to redirect
+      const oauthState = btoa(JSON.stringify({ returnUri: appReturnUri }));
 
       // Build Google OAuth URL with PKCE
       const authUrl =
@@ -83,6 +88,7 @@ export default function AuthScreen() {
           code_challenge: codeChallenge,
           code_challenge_method: 'S256',
           prompt: 'select_account',
+          state: oauthState,
         }).toString();
 
       // Open in Custom Tab — closes when it detects navigation to myapp://

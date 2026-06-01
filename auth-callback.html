@@ -16,27 +16,30 @@
 
     <script>
       (function(){
-        // Google OAuth sends the authorization code as a query parameter (?code=...)
-        // Forward it to the app via custom scheme deep link.
-        var search = window.location.search || '';
-        var hash = window.location.hash || '';
-        // Prefer query params (PKCE code flow), fallback to hash (implicit)
-        var payload = search || hash || '';
+        // Google OAuth sends the authorization code as a query parameter (?code=...&state=...)
+        var params = new URLSearchParams(window.location.search);
+        var code = params.get('code') || '';
+        var stateRaw = params.get('state') || '';
 
-        // Build the deep link that the native app listens for.
-        // openAuthSessionAsync will detect this custom-scheme navigation and
-        // close the Custom Tab, returning the full URL to the app.
-        var deepLink = 'myapp://auth/callback' + payload;
+        // Decode return URI from state (set by the app to support Expo Go and standalone)
+        var returnUri = 'myapp://auth/callback'; // default fallback
+        try {
+          if (stateRaw) {
+            var stateObj = JSON.parse(atob(stateRaw));
+            if (stateObj.returnUri) returnUri = stateObj.returnUri;
+          }
+        } catch(e) { /* use default */ }
 
-        // Attempt 1: direct custom scheme redirect
-        // On Android Chrome Custom Tabs, this triggers the registered intent filter
-        // and expo-web-browser's returnUrl detection closes the tab.
+        // Build deep link with code param
+        var separator = returnUri.indexOf('?') >= 0 ? '&' : '?';
+        var deepLink = returnUri + separator + 'code=' + encodeURIComponent(code);
+
+        // Attempt 1: direct redirect to the app's scheme
         window.location.replace(deepLink);
 
-        // Attempt 2 (fallback after 500ms): Android intent URI
-        // This is more reliable if the plain scheme redirect doesn't trigger
+        // Attempt 2 (fallback after 500ms): Android intent URI for standalone builds
         setTimeout(function(){
-          var intentUri = 'intent://auth/callback' + payload +
+          var intentUri = 'intent://auth/callback?code=' + encodeURIComponent(code) +
             '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
           window.location.replace(intentUri);
         }, 500);
