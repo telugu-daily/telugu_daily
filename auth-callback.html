@@ -35,7 +35,7 @@
         // Attempt 1: Android intent URI (most reliable for custom schemes)
         var intentSearch = search || '';
         var intentUri = 'intent://auth/callback' + intentSearch + hash +
-          '#Intent;scheme=myapp;package=com.shankar_bojanki.teluguDaily;end';
+          '#Intent;scheme=myapp;package=com.shankarbojanki.telugudaily;end';
         window.location.href = intentUri;
 
         // Attempt 2 (fallback after 300ms): direct custom scheme
